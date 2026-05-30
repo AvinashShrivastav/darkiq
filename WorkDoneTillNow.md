@@ -267,3 +267,100 @@ Phase 1 — download the Instacart dataset, build the master transaction table, 
 Phase 2 — compute RFM + behavioural features per user, join weather and event flags, and build the unified feature store that feeds the clustering and forecasting models.
 
 ---
+
+---
+
+## Phase 2 — Feature Engineering
+**Date Completed:** 2025-01-27
+**Status:** ✅ Complete
+
+---
+
+### What Was Built
+
+| File | What It Does |
+|---|---|
+| `src/features/rfm.py` | Computes 10 user-level features: recency, frequency, monetary proxy, avg basket size, reorder ratio, night owl score, weekend concentration, avg order hour, organic affinity, avg days between orders |
+| `src/features/events.py` | Builds a 1,095-day calendar (2013–2015) with festival flags, days_to_festival, IPL window flags, exam season, monsoon, and weekend flags |
+| `src/features/temporal.py` | Assigns synthetic order dates to every order, joins weather + events onto orders, aggregates to user level, merges with RFM + demographics → `feature_store.parquet` |
+| `data/processed/feat_rfm.parquet` | 206,209 rows × 11 columns — one row per user |
+| `data/external/events.parquet` | 1,095 rows × 7 columns — one row per calendar day |
+| `data/processed/feature_store.parquet` | 206,209 rows × 21 columns — the unified input to clustering |
+| `data/processed/order_context.parquet` | 3,214,874 rows — every order with its date, weather, and event context — used by association rules and forecasting |
+
+---
+
+### Decisions Made
+
+**1. Recency computed from days_since_prior_order gaps, not real dates**
+- Instacart has no calendar dates — only `order_number` (1–99) and `days_since_prior_order`
+- Recency = `max_total_days - user_total_days` so that lower recency = more recently active
+- This is the correct approach for datasets without timestamps
+
+**2. Monetary proxy = avg_basket_size × reorder_ratio**
+- Instacart has no price data
+- Basket size × reorder ratio is the best available proxy: a user who buys 15 items and reorders 80% of them is more valuable than one who buys 5 items and reorders 20%
+- This is a standard technique when price data is unavailable
+
+**3. Synthetic order dates anchored to 2013-01-01 with random per-user offsets**
+- Each user's first order is assigned a random date in 2013 (offset 0–364 days)
+- Subsequent orders step forward using `days_since_prior_order`
+- Fixed seed 42 ensures the same dates are produced every run
+- This is necessary to join weather and event data, which are calendar-based
+- Clearly synthetic — disclosed in code comments
+
+**4. IPL flagged as a season window, not individual match days**
+- Individual IPL match schedules for 2013–2015 would require scraping
+- Flagging the entire IPL season (Apr–May) is accurate enough for demand signal purposes — snack/beverage demand is elevated throughout the season, not just on match days
+
+**5. Weather aggregated to user level as percentages**
+- Weather is order-level (each order has a weather context)
+- For clustering we need user-level features
+- `pct_rainy_orders` = fraction of a user's orders placed on rainy days — this captures whether a user is a "rainy day buyer" which is a real behavioural signal
+
+**6. Saved `order_context.parquet` separately**
+- The order-level weather + event context is needed again in Phase 4 (association rules) and Phase 5 (forecasting)
+- Saving it now avoids recomputing the date assignment and joins later
+
+---
+
+### Challenges & How They Were Resolved
+
+**Challenge 1: No real dates in Instacart**
+- Cannot join weather or events without dates
+- Resolution: synthetic date assignment using cumulative `days_since_prior_order` gaps per user, anchored to 2013-01-01. Capped at 2015-12-31 to stay within the weather/event data range.
+
+**Challenge 2: `date_x` / `date_y` column collision after double merge**
+- Merging on `order_date` vs `date` (weather) then again vs `date` (events) created duplicate `date` columns
+- Resolution: `drop(columns=["date_x", "date_y"], errors="ignore")` after both merges
+
+---
+
+### What Is Real vs Synthetic
+
+| Data | Real or Synthetic |
+|---|---|
+| RFM features (recency, frequency, basket size, reorder ratio) | ✅ Real — computed from real Instacart behaviour |
+| night_owl_score, weekend_concentration, organic_affinity | ✅ Real — computed from real order timing and product names |
+| Festival dates, IPL season windows | ✅ Real — actual Indian calendar dates |
+| Weather (temp_bin, rain_bin) | ✅ Real — Open-Meteo historical API |
+| order_date assigned to each order | ⚠️ Synthetic — anchored simulation, not real timestamps |
+| pct_festival_orders, pct_rainy_orders | ⚠️ Derived from synthetic dates — directionally valid, not exact |
+
+---
+
+### Resume Talking Points
+
+- **"Engineered a 21-feature user-level feature store from raw transaction data — including RFM metrics, behavioural signals (night-owl score, organic affinity, weekend concentration), and contextual aggregates (% orders on rainy days, % during IPL season) — with zero null values across 206K users."**
+
+- **"Solved the absence of real timestamps in the Instacart dataset by implementing a reproducible synthetic date assignment strategy using cumulative order gap simulation, enabling calendar-based feature joins with real weather and festival data."**
+
+- **"Built a reusable event calendar covering 3 years of Indian festivals (Diwali, Holi, Eid, Navratri, Dussehra), IPL season windows, exam seasons, and monsoon periods — all as binary/numeric features ready for ML consumption."**
+
+---
+
+### Up Next
+
+Phase 3 — load the feature store into a clustering pipeline, find optimal K using elbow + silhouette analysis, fit K-Means + DBSCAN, name each cluster as a persona, and validate with t-SNE.
+
+---
