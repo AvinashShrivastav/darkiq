@@ -165,3 +165,105 @@
 Phase 1 — download the Instacart dataset, build the master transaction table, add synthetic Indian geography, and run full EDA with 8 documented analyses and saved plots.
 
 ---
+
+---
+
+## Phase 1 — Data Ingestion & EDA
+**Date Completed:** 2025-01-27
+**Status:** ✅ Complete
+
+---
+
+### What Was Built
+
+| File | What It Does |
+|---|---|
+| `src/utils/config.py` | Loads all environment variables from `.env` into Python constants — `DATA_RAW`, `DATA_PROCESSED`, `DATABASE_URL`, etc. Every other script imports from here instead of hardcoding paths |
+| `src/data/ingest.py` | Loads all 5 Instacart CSVs, merges them into one flat transaction table, filters to `eval_set == 'prior'` (the actual historical orders), saves as `data/processed/master.parquet` |
+| `src/data/clean.py` | Assigns each `user_id` a synthetic Indian pin code, city, store_id, income_bucket, and age_group. Saves as `data/processed/user_demographics.parquet` |
+| `src/data/weather_api.py` | Calls the Open-Meteo free historical API for Mumbai (2013–2015), creates `temp_bin` (cold/mild/hot) and `rain_bin` (dry/drizzle/heavy) columns, saves as `data/external/weather.parquet` |
+| `notebooks/01_eda.ipynb` | Full EDA notebook with 8 analyses and plots, all saved to `notebooks/figures/` |
+
+---
+
+### Decisions Made
+
+**1. Filter to `eval_set == 'prior'` only**
+- Instacart has 3 eval sets: `prior` (historical orders), `train` (last order for their ML challenge), `test` (held out for their challenge)
+- We only want `prior` — it contains the full order history (3.2M+ orders)
+- `train` and `test` are artefacts of Instacart's own Kaggle competition, not relevant to our use case
+
+**2. `numpy.random.default_rng(seed=42)` for synthetic demographics**
+- Used the new NumPy Generator API (`default_rng`) instead of the legacy `np.random.seed()`
+- Reason: `default_rng` is statistically better (PCG64 algorithm), reproducible, and the modern NumPy standard
+- Fixed seed 42 means every run produces the same user→pin_code mapping — important for reproducibility
+
+**3. 6 pin codes across 3 cities (Mumbai, Delhi, Bangalore)**
+- Chose India's 3 largest metro cities — most realistic for quick-commerce (Blinkit, Zepto operate here)
+- 2 pin codes per city → 2 dark stores per city → 6 stores total
+- This gives enough geographic variety to make the store-level analysis interesting
+
+**4. Weather date range: 2013–2015**
+- Instacart's order data is from approximately 2013–2015 (inferred from order sequence numbers)
+- Open-Meteo archive goes back to 1940 — no issue fetching this range
+- Mumbai chosen as the representative city because ~33% of users are assigned there
+
+**5. Normalised heatmap for Department × Hour analysis**
+- Raw counts would make high-volume departments (produce, dairy) dominate the colour scale
+- Normalising each row by its own max shows *relative* peak hours per department — much more informative
+- This is the correct way to compare departments of very different sizes
+
+**6. Product correlation matrix on top-30 only**
+- Full 50K product correlation matrix would be 50K × 50K — impossible to compute or visualise
+- Top-30 by frequency gives the most actionable co-purchase signal
+- This directly seeds intuition for which association rules to expect in Phase 4
+
+**7. `figures/` folder inside `notebooks/`**
+- All plots saved as PNG files at 150 DPI — good enough for portfolio screenshots, not too large for git
+- Keeping figures inside `notebooks/figures/` keeps the notebook folder self-contained
+
+---
+
+### Challenges & How They Were Resolved
+
+**Challenge 1: Python 3.9 on the machine vs 3.11 in requirements.txt**
+- The system Python is 3.9.6, but requirements.txt specifies 3.11
+- This is fine for Phase 1 — pandas, numpy, matplotlib all work on 3.9
+- Resolution: noted for later — when Prophet is installed (Phase 5), a virtual environment with 3.11 will be needed. For now, system Python is sufficient.
+
+**Challenge 2: `pyarrow` and `mlxtend` were not installed**
+- `pip3 show pyarrow mlxtend` returned nothing
+- Resolution: `pip3 install pyarrow mlxtend requests python-dotenv` — installed cleanly
+
+**Challenge 3: Instacart data requires manual download**
+- Kaggle CLI requires authentication — cannot be automated without the user's Kaggle API key
+- Resolution: `ingest.py` raises a clear `FileNotFoundError` with the exact download URL and target folder if CSVs are missing. The user downloads once and the script handles everything else.
+
+---
+
+### What Is Real vs Synthetic
+
+| Data | Real or Synthetic | Notes |
+|---|---|---|
+| Orders, products, baskets | ✅ Real | Instacart Kaggle dataset |
+| Weather (temp, rain, weathercode) | ✅ Real | Open-Meteo historical API |
+| `pin_code`, `city`, `store_id` | ⚠️ Synthetic | Randomly assigned to user_ids — disclosed in code comments and README |
+| `income_bucket`, `age_group` | ⚠️ Synthetic | Randomly assigned with realistic Indian urban probabilities |
+
+---
+
+### Resume Talking Points
+
+- **"Built a robust ETL pipeline in Python that ingests 5 relational CSVs (3.4M orders, 50K products, 206K users), merges them into a single flat transaction table, and persists as Parquet for efficient downstream processing."**
+
+- **"Conducted 8-point EDA on the Instacart dataset — identified key behavioural signals including a 7-day and 30-day reorder cycle, morning peaks for produce, evening peaks for snacks, and a right-skewed basket size distribution — all of which directly informed feature engineering decisions in Phase 2."**
+
+- **"Integrated real historical weather data via the Open-Meteo API (free, no key required) and engineered temperature and rainfall bins to serve as contextual features for association rule mining and demand forecasting."**
+
+---
+
+### Up Next
+
+Phase 2 — compute RFM + behavioural features per user, join weather and event flags, and build the unified feature store that feeds the clustering and forecasting models.
+
+---
