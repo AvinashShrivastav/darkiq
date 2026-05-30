@@ -1,0 +1,59 @@
+# ─── Node ───────────────────────────────────────
+node_modules/
+.next/
+out/
+dist/
+.npm
+*.tsbuildinfo
+next-env.d.ts
+
+# ─── Python ─────────────────────────────────────
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+*.so
+.Python
+
+# ─── Data (large files, never commit raw data) ──
+data/raw/
+data/processed/
+data/external/
+*.parquet
+*.csv
+*.zip
+*.gz
+
+# ─── Jupyter ────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ─── Environment & Secrets ──────────────────────
+.env
+.env.local
+.env.*.local
+
+# ─── OS ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── IDE ────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── Docker ─────────────────────────────────────
+*.log
+
+# ─── ML artifacts ───────────────────────────────
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+mlruns/
